@@ -2,6 +2,7 @@ package dev.orbitas;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.MovementType;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.network.packet.Packet;
@@ -24,7 +25,10 @@ public class PlanetEntity extends Entity {
     private final Map<Integer, Integer> planetHitCooldown = new HashMap<>();
     private float spin;
 
-    public PlanetEntity(EntityType<? extends PlanetEntity> type, World world) { super(type, world); }
+    public PlanetEntity(EntityType<? extends PlanetEntity> type, World world) {
+        super(type, world);
+        setNoGravity(true);
+    }
     @Override protected void initDataTracker() { dataTracker.startTracking(PLANET_ID, 0); }
     public void setPlanetType(PlanetType type) { dataTracker.set(PLANET_ID, type.ordinal()); }
     public PlanetType getPlanetType() { return PlanetType.byId(dataTracker.get(PLANET_ID)); }
@@ -40,7 +44,20 @@ public class PlanetEntity extends Entity {
             getWorld().addParticle(getPlanetType().particle, getX() + Math.cos(angle) * ring * 1.65, getY() + y * 1.1,
                     getZ() + Math.sin(angle) * ring * 1.65, 0, 0.015, 0);
         }
+        if (getWorld().isClient && getPlanetType() == PlanetType.METEORO) {
+            getWorld().addParticle(ParticleTypes.FLAME, getX(), getY(), getZ(), 0, 0.02, 0);
+            if (age % 2 == 0) getWorld().addParticle(ParticleTypes.SMOKE, getX(), getY(), getZ(), 0, 0.01, 0);
+        }
         if (!getWorld().isClient) {
+            applyGravityAndMove();
+            if (getPlanetType() == PlanetType.METEORO && (horizontalCollision || verticalCollision)) {
+                if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
+                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, getX(), getY(), getZ(), 1, 0, 0, 0, 0);
+                    serverWorld.spawnParticles(ParticleTypes.FLAME, getX(), getY(), getZ(), 28, 0.7, 0.7, 0.7, 0.12);
+                }
+                discard();
+                return;
+            }
             hitCooldown.replaceAll((uuid, ticks) -> ticks - 1);
             hitCooldown.values().removeIf(ticks -> ticks <= 0);
             planetHitCooldown.replaceAll((id, ticks) -> ticks - 1);
@@ -54,6 +71,7 @@ public class PlanetEntity extends Entity {
                 player.velocityModified = true;
                 player.damage(getDamageSources().magic(), getPlanetType().collisionDamage);
                 if (getPlanetType() == PlanetType.VENUS) player.setOnFireFor(3);
+                if (getPlanetType() == PlanetType.SOL) player.setOnFireFor(8);
                 player.playSound(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, 0.9f, 0.8f + random.nextFloat() * 0.5f);
                 hitCooldown.put(player.getUuid(), 18);
             }
@@ -64,11 +82,44 @@ public class PlanetEntity extends Entity {
         }
     }
 
+    private void applyGravityAndMove() {
+        Vec3d acceleration = Vec3d.ZERO;
+        Box gravityRange = getBoundingBox().expand(96);
+        for (PlanetEntity other : getWorld().getEntitiesByClass(PlanetEntity.class, gravityRange,
+                body -> body != this && body.getPlanetType() != PlanetType.METEORO)) {
+            Vec3d delta = other.getPos().subtract(getPos());
+            double distanceSquared = Math.max(16.0, delta.lengthSquared());
+            double strength = 0.0015 * other.getPlanetType().mass / distanceSquared;
+            acceleration = acceleration.add(delta.normalize().multiply(strength));
+        }
+        if (acceleration.lengthSquared() > 0.0004) acceleration = acceleration.normalize().multiply(0.02);
+
+        Vec3d velocity = getVelocity().multiply(0.9995).add(acceleration);
+        if (getPlanetType() != PlanetType.METEORO && velocity.lengthSquared() > 0.36)
+            velocity = velocity.normalize().multiply(0.6);
+        setVelocity(velocity);
+        move(MovementType.SELF, velocity);
+    }
+
     private void collideWithPlanets() {
         Box nearby = getBoundingBox().expand(2.8);
         for (PlanetEntity other : getWorld().getEntitiesByClass(PlanetEntity.class, nearby,
                 planet -> planet != this && getId() < planet.getId())) {
             if (!getBoundingBox().intersects(other.getBoundingBox())) continue;
+
+            if (getPlanetType() == PlanetType.METEORO || other.getPlanetType() == PlanetType.METEORO) {
+                double x = (getX() + other.getX()) * 0.5;
+                double y = (getY() + other.getY()) * 0.5;
+                double z = (getZ() + other.getZ()) * 0.5;
+                if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
+                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, x, y, z, 2, 0.25, 0.25, 0.25, 0.02);
+                    serverWorld.spawnParticles(ParticleTypes.FLAME, x, y, z, 32, 0.6, 0.6, 0.6, 0.14);
+                    serverWorld.spawnParticles(ParticleTypes.LAVA, x, y, z, 10, 0.45, 0.45, 0.45, 0.05);
+                }
+                if (getPlanetType() == PlanetType.METEORO) discard();
+                if (other.getPlanetType() == PlanetType.METEORO) other.discard();
+                continue;
+            }
 
             Vec3d direction = other.getPos().subtract(getPos());
             if (direction.lengthSquared() < 1.0E-4) {

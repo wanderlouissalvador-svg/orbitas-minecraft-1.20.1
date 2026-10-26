@@ -1,6 +1,6 @@
 # Órbitas: Planetas Vivos 🌌
 
-Un mod de Fabric para **Minecraft Java 1.20.1**: invoca cinco planetas esféricos con texturas propias, giro, aura luminosa, estelas de partículas y choques con los jugadores.
+Un mod de Fabric para **Minecraft Java 1.20.1**: invoca planetas y el Sol como cuerpos esféricos con texturas renovadas, gravedad, órbitas, choques y meteoros.
 
 ## Los cinco mundos
 
@@ -11,14 +11,20 @@ Un mod de Fabric para **Minecraft Java 1.20.1**: invoca cinco planetas esférico
 | `/planeta venus` | Nubes doradas y bruma | Calor y daño |
 | `/planeta luna` | Cráteres plateados y destellos | Empujón ligero |
 | `/planeta pluton` | Hielo azul y nieve | Empujón suave |
+| `/planeta tierra` | Océanos, continentes y nubes | Órbita y gravedad |
+| `/planeta jupiter` | Bandas nubosas y Gran Mancha Roja | Gran masa y atracción |
+| `/planeta saturno` | Bandas doradas y anillos visibles | Gran masa y atracción |
+| `/planeta sol` | Fotosfera brillante y corona | Mucho calor y gravedad |
 
-Los planetas son entidades 3D, giran en el sitio y ocupan espacio. Al tocarlos, el jugador recibe un impulso y daño; Venus también prende fuego brevemente. Requiere **Fabric Loader**, **Fabric API** y **Java 17**.
+Los cuerpos se atraen entre sí, se separan al chocar y emiten destellos. Al invocar un planeta cerca de otro, comienza en una órbita aproximada. El Sol es el cuerpo más masivo. Los meteoros dejan una estela ardiente y estallan al golpear el terreno.
+
+Requiere **Fabric Loader**, **Fabric API** y **Java 17**.
 
 ## Instalar
 
 1. Instala Fabric Loader para Minecraft 1.20.1 y Fabric API.
 2. En GitHub, abre **Actions → Build mod → la ejecución más reciente que terminó correctamente** y descarga el artefacto `orbitas-fabric-1.20.1`. Extrae el `.jar` del ZIP y ponlo en la carpeta `mods`.
-3. En un mundo con trucos, usa uno de los comandos de arriba.
+3. En un mundo con trucos, usa uno de los comandos de arriba. Para lanzar un meteoro, escribe `/meteoro`.
 
 ## Compilar desde el código
 

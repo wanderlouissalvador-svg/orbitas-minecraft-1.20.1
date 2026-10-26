@@ -1,4 +1,6 @@
 {
   "entity.orbitas.planet": "Planeta",
+  "entity.orbitas.sol": "Sol",
+  "entity.orbitas.meteoro": "Meteoro",
   "itemGroup.orbitas": "Órbitas: Planetas Vivos"
 }

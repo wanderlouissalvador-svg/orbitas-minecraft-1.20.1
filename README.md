@@ -16,7 +16,7 @@ Un mod de Fabric para **Minecraft Java 1.20.1**: invoca planetas y el Sol como c
 | `/planeta saturno` | Bandas doradas y anillos visibles | Gran masa y atracción |
 | `/planeta sol` | Fotosfera brillante y corona | Mucho calor y gravedad |
 
-Los cuerpos se atraen entre sí, se separan al chocar y emiten destellos. Al invocar un planeta cerca de otro, comienza en una órbita aproximada. El Sol es el cuerpo más masivo. Los meteoros dejan una estela ardiente y estallan al golpear el terreno.
+Los cuerpos se atraen entre sí y siguen órbitas dinámicas; al chocar rebotan con efectos de impacto visibles. Usa `/choqueplanetario` para ver una colisión de prueba entre la Tierra y Júpiter. El Sol es el cuerpo más masivo. Los meteoros dejan una estela ardiente y estallan al golpear el terreno.
 
 Requiere **Fabric Loader**, **Fabric API** y **Java 17**.
 

@@ -94,7 +94,7 @@ public class PlanetEntity extends Entity {
         }
         if (acceleration.lengthSquared() > 0.0004) acceleration = acceleration.normalize().multiply(0.02);
 
-        Vec3d velocity = getVelocity().multiply(0.9995).add(acceleration);
+        Vec3d velocity = getVelocity().multiply(0.99998).add(acceleration);
         if (getPlanetType() != PlanetType.METEORO && velocity.lengthSquared() > 0.36)
             velocity = velocity.normalize().multiply(0.6);
         setVelocity(velocity);
@@ -102,50 +102,76 @@ public class PlanetEntity extends Entity {
     }
 
     private void collideWithPlanets() {
-        Box nearby = getBoundingBox().expand(2.8);
+        Box nearby = getBoundingBox().expand(5.0);
         for (PlanetEntity other : getWorld().getEntitiesByClass(PlanetEntity.class, nearby,
                 planet -> planet != this && getId() < planet.getId())) {
-            if (!getBoundingBox().intersects(other.getBoundingBox())) continue;
+            double thisRadius = 0.91 * getPlanetType().scale;
+            double otherRadius = 0.91 * other.getPlanetType().scale;
+            Vec3d between = other.getPos().subtract(getPos());
+            double distance = between.length();
+            double contactDistance = thisRadius + otherRadius;
+            if (distance >= contactDistance) continue;
 
             if (getPlanetType() == PlanetType.METEORO || other.getPlanetType() == PlanetType.METEORO) {
                 double x = (getX() + other.getX()) * 0.5;
                 double y = (getY() + other.getY()) * 0.5;
                 double z = (getZ() + other.getZ()) * 0.5;
                 if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
-                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, x, y, z, 2, 0.25, 0.25, 0.25, 0.02);
-                    serverWorld.spawnParticles(ParticleTypes.FLAME, x, y, z, 32, 0.6, 0.6, 0.6, 0.14);
-                    serverWorld.spawnParticles(ParticleTypes.LAVA, x, y, z, 10, 0.45, 0.45, 0.45, 0.05);
+                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, x, y, z, 4, 0.4, 0.4, 0.4, 0.03);
+                    serverWorld.spawnParticles(ParticleTypes.FLAME, x, y, z, 52, 0.8, 0.8, 0.8, 0.16);
+                    serverWorld.spawnParticles(ParticleTypes.LAVA, x, y, z, 18, 0.5, 0.5, 0.5, 0.08);
+                    serverWorld.spawnParticles(ParticleTypes.SMOKE, x, y, z, 38, 0.7, 0.7, 0.7, 0.10);
                 }
                 if (getPlanetType() == PlanetType.METEORO) discard();
                 if (other.getPlanetType() == PlanetType.METEORO) other.discard();
                 continue;
             }
 
-            Vec3d direction = other.getPos().subtract(getPos());
-            if (direction.lengthSquared() < 1.0E-4) {
+            Vec3d direction = between;
+            if (distance < 1.0E-4) {
                 double angle = (getId() * 31L + other.getId() * 17L) * 0.37;
                 direction = new Vec3d(Math.cos(angle), 0.15, Math.sin(angle));
             }
             direction = direction.normalize();
 
-            // Separate both spheres gradually so overlapping spawns visibly bounce apart.
-            setPosition(getPos().subtract(direction.multiply(0.12)));
-            other.setPosition(other.getPos().add(direction.multiply(0.12)));
+            // Resolve the overlap according to each body's mass, then apply a physical bounce.
+            double overlap = contactDistance - distance + 0.035;
+            double invThis = 1.0 / Math.max(0.1, getPlanetType().mass);
+            double invOther = 1.0 / Math.max(0.1, other.getPlanetType().mass);
+            double invTotal = invThis + invOther;
+            setPosition(getPos().subtract(direction.multiply(overlap * invThis / invTotal)));
+            other.setPosition(other.getPos().add(direction.multiply(overlap * invOther / invTotal)));
+
+            Vec3d relativeVelocity = other.getVelocity().subtract(getVelocity());
+            double closingSpeed = relativeVelocity.dotProduct(direction);
+            if (closingSpeed < 0) {
+                double impulse = -(1.0 + 0.78) * closingSpeed / invTotal;
+                setVelocity(getVelocity().subtract(direction.multiply(impulse * invThis)));
+                other.setVelocity(other.getVelocity().add(direction.multiply(impulse * invOther)));
+            }
 
             if (!planetHitCooldown.containsKey(other.getId())) {
                 double impactX = (getX() + other.getX()) * 0.5;
                 double impactY = (getY() + other.getY()) * 0.5;
                 double impactZ = (getZ() + other.getZ()) * 0.5;
                 if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
-                    serverWorld.spawnParticles(ParticleTypes.END_ROD, impactX, impactY, impactZ, 18, 0.55, 0.55, 0.55, 0.08);
-                    serverWorld.spawnParticles(ParticleTypes.FIREWORK, impactX, impactY, impactZ, 12, 0.45, 0.45, 0.45, 0.06);
+                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, impactX, impactY, impactZ, 3, 0.25, 0.25, 0.25, 0.03);
+                    serverWorld.spawnParticles(ParticleTypes.FIREWORK, impactX, impactY, impactZ, 42, 0.8, 0.8, 0.8, 0.12);
+                    serverWorld.spawnParticles(ParticleTypes.END_ROD, impactX, impactY, impactZ, 28, 0.75, 0.75, 0.75, 0.10);
+                    serverWorld.spawnParticles(ParticleTypes.CLOUD, impactX, impactY, impactZ, 24, 0.55, 0.55, 0.55, 0.06);
                 }
                 for (PlayerEntity player : getWorld().getPlayers()) {
-                    if (player.squaredDistanceTo(impactX, impactY, impactZ) < 64)
-                        player.playSound(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 0.65f + random.nextFloat() * 0.35f);
+                    if (player.squaredDistanceTo(impactX, impactY, impactZ) < 144) {
+                        Vec3d shock = player.getPos().subtract(impactX, impactY, impactZ).normalize();
+                        if (shock.lengthSquared() > 0.01) {
+                            player.addVelocity(shock.x * 0.45, Math.max(0.15, shock.y * 0.45), shock.z * 0.45);
+                            player.velocityModified = true;
+                        }
+                        player.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE, 1.25f, 0.72f + random.nextFloat() * 0.18f);
+                    }
                 }
-                planetHitCooldown.put(other.getId(), 12);
-                other.planetHitCooldown.put(getId(), 12);
+                planetHitCooldown.put(other.getId(), 24);
+                other.planetHitCooldown.put(getId(), 24);
             }
         }
     }

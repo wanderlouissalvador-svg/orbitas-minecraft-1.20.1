@@ -26,7 +26,7 @@ public class PlanetRenderer extends EntityRenderer<PlanetEntity> {
     }
 
     @Override public Identifier getTexture(PlanetEntity planet) {
-        return new Identifier(OrbitasMod.MOD_ID, "textures/entity/" + planet.getPlanetType().id + ".png");
+        return new Identifier(OrbitasMod.MOD_ID, "textures/entity/v2/" + planet.getPlanetType().id + ".png");
     }
 
     @Override public void render(PlanetEntity planet, float yaw, float tickDelta, MatrixStack matrices,

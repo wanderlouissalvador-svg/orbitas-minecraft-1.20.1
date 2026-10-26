@@ -85,6 +85,29 @@ public class OrbitasMod implements ModInitializer {
             source.sendFeedback(() -> Text.literal("☄ ¡Meteoro en camino!"), false);
             return 1;
         }));
+
+        dispatcher.register(CommandManager.literal("choqueplanetario").executes(context -> {
+            var source = context.getSource();
+            Vec3d look = lookVector(source.getRotation().x, source.getRotation().y);
+            Vec3d side = new Vec3d(-look.z, 0, look.x).normalize();
+            if (side.lengthSquared() < 0.01) side = new Vec3d(1, 0, 0);
+            Vec3d center = source.getPosition().add(look.multiply(9)).add(0, 3, 0);
+            PlanetEntity earth = PLANET.create(source.getWorld());
+            PlanetEntity jupiter = PLANET.create(source.getWorld());
+            if (earth == null || jupiter == null) return 0;
+            earth.setPlanetType(PlanetType.TIERRA);
+            jupiter.setPlanetType(PlanetType.JUPITER);
+            Vec3d left = center.subtract(side.multiply(3.8));
+            Vec3d right = center.add(side.multiply(3.8));
+            earth.refreshPositionAndAngles(left.x, left.y, left.z, 0, 0);
+            jupiter.refreshPositionAndAngles(right.x, right.y, right.z, 0, 0);
+            earth.setVelocity(side.multiply(0.42));
+            jupiter.setVelocity(side.multiply(-0.42));
+            source.getWorld().spawnEntity(earth);
+            source.getWorld().spawnEntity(jupiter);
+            source.sendFeedback(() -> Text.literal("☄ ¡Tierra y Júpiter van a chocar!"), false);
+            return 1;
+        }));
         });
     }
 

@@ -21,6 +21,7 @@ import java.util.UUID;
 public class PlanetEntity extends Entity {
     private static final TrackedData<Integer> PLANET_ID = DataTracker.registerData(PlanetEntity.class, TrackedDataHandlerRegistry.INTEGER);
     private final Map<UUID, Integer> hitCooldown = new HashMap<>();
+    private final Map<Integer, Integer> planetHitCooldown = new HashMap<>();
     private float spin;
 
     public PlanetEntity(EntityType<? extends PlanetEntity> type, World world) { super(type, world); }
@@ -42,6 +43,9 @@ public class PlanetEntity extends Entity {
         if (!getWorld().isClient) {
             hitCooldown.replaceAll((uuid, ticks) -> ticks - 1);
             hitCooldown.values().removeIf(ticks -> ticks <= 0);
+            planetHitCooldown.replaceAll((id, ticks) -> ticks - 1);
+            planetHitCooldown.values().removeIf(ticks -> ticks <= 0);
+            collideWithPlanets();
             Box touch = getBoundingBox().expand(0.18);
             for (PlayerEntity player : getWorld().getEntitiesByClass(PlayerEntity.class, touch, p -> p.isAlive() && !hitCooldown.containsKey(p.getUuid()))) {
                 Vec3d away = player.getPos().subtract(getPos()).normalize();
@@ -57,6 +61,41 @@ public class PlanetEntity extends Entity {
                 if (getBoundingBox().expand(3.5).intersects(player.getBoundingBox()))
                     serverWorld.spawnParticles(ParticleTypes.END_ROD, getX(), getY(), getZ(), 2, 0.8, 0.8, 0.8, 0.02);
             });
+        }
+    }
+
+    private void collideWithPlanets() {
+        Box nearby = getBoundingBox().expand(2.8);
+        for (PlanetEntity other : getWorld().getEntitiesByClass(PlanetEntity.class, nearby,
+                planet -> planet != this && getId() < planet.getId())) {
+            if (!getBoundingBox().intersects(other.getBoundingBox())) continue;
+
+            Vec3d direction = other.getPos().subtract(getPos());
+            if (direction.lengthSquared() < 1.0E-4) {
+                double angle = (getId() * 31L + other.getId() * 17L) * 0.37;
+                direction = new Vec3d(Math.cos(angle), 0.15, Math.sin(angle));
+            }
+            direction = direction.normalize();
+
+            // Separate both spheres gradually so overlapping spawns visibly bounce apart.
+            setPosition(getPos().subtract(direction.multiply(0.12)));
+            other.setPosition(other.getPos().add(direction.multiply(0.12)));
+
+            if (!planetHitCooldown.containsKey(other.getId())) {
+                double impactX = (getX() + other.getX()) * 0.5;
+                double impactY = (getY() + other.getY()) * 0.5;
+                double impactZ = (getZ() + other.getZ()) * 0.5;
+                if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
+                    serverWorld.spawnParticles(ParticleTypes.END_ROD, impactX, impactY, impactZ, 18, 0.55, 0.55, 0.55, 0.08);
+                    serverWorld.spawnParticles(ParticleTypes.FIREWORK, impactX, impactY, impactZ, 12, 0.45, 0.45, 0.45, 0.06);
+                }
+                for (PlayerEntity player : getWorld().getPlayers()) {
+                    if (player.squaredDistanceTo(impactX, impactY, impactZ) < 64)
+                        player.playSound(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 0.65f + random.nextFloat() * 0.35f);
+                }
+                planetHitCooldown.put(other.getId(), 12);
+                other.planetHitCooldown.put(getId(), 12);
+            }
         }
     }
 

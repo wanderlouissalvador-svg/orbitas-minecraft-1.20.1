@@ -59,9 +59,9 @@ public class OrbitasMod implements ModInitializer {
                         Vec3d position = anchor.getPos().add(offset);
                         planet.refreshPositionAndAngles(position.x, position.y, position.z, 0, 0);
                         Vec3d tangent = new Vec3d(-Math.sin(angle), 0.08, Math.cos(angle)).normalize()
-                                .multiply(Math.sqrt(0.0015 * anchor.getPlanetType().mass / radius));
+                                .multiply(Math.sqrt(0.0015 * anchor.getMass() / radius));
                         planet.setVelocity(tangent.add(anchor.getVelocity()));
-                        anchor.addVelocity(tangent.negate().multiply(type.mass / Math.max(anchor.getPlanetType().mass, 0.1f)));
+                        anchor.addVelocity(tangent.negate().multiply(type.mass / Math.max(anchor.getMass(), 0.1f)));
                     } else {
                         Vec3d look = lookVector(source.getRotation().x, source.getRotation().y);
                         Vec3d position = origin.add(look.multiply(8)).add(0, 2, 0);

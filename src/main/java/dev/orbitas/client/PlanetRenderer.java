@@ -17,8 +17,8 @@ import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
 public class PlanetRenderer extends EntityRenderer<PlanetEntity> {
-    private static final int LONGITUDE_STEPS = 48;
-    private static final int LATITUDE_STEPS = 32;
+    private static final int LONGITUDE_STEPS = 64;
+    private static final int LATITUDE_STEPS = 48;
 
     public PlanetRenderer(EntityRendererFactory.Context context) {
         super(context);
@@ -33,7 +33,7 @@ public class PlanetRenderer extends EntityRenderer<PlanetEntity> {
                                  VertexConsumerProvider consumers, int light) {
         PlanetType type = planet.getPlanetType();
         float spin = planet.getSpin(tickDelta);
-        float size = 0.91f * type.scale;
+        float size = 0.91f * planet.getVisualScale();
         int bodyLight = type == PlanetType.SOL ? 15728880 : light;
         matrices.push();
         matrices.translate(0, 0.08, 0);
@@ -42,15 +42,6 @@ public class PlanetRenderer extends EntityRenderer<PlanetEntity> {
 
         if (type == PlanetType.SATURNO) drawRings(matrices, consumers, bodyLight, getTexture(planet), size);
 
-        int r = type.color >> 16 & 255;
-        int g = type.color >> 8 & 255;
-        int b = type.color & 255;
-        VertexConsumer aura = consumers.getBuffer(RenderLayer.getEntityTranslucent(getTexture(planet)));
-        drawSphere(matrices, aura, bodyLight, size * 1.075f, r, g, b, 62);
-        if (type == PlanetType.SOL) {
-            drawSphere(matrices, aura, bodyLight, size * 1.18f, 255, 132, 28, 58);
-            drawSphere(matrices, aura, bodyLight, size * 1.32f, 255, 72, 12, 28);
-        }
         VertexConsumer surface = consumers.getBuffer(RenderLayer.getEntityCutoutNoCull(getTexture(planet)));
         drawSphere(matrices, surface, bodyLight, size, 255, 255, 255, 255);
         matrices.pop();

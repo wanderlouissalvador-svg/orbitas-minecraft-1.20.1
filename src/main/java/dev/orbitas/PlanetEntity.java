@@ -21,18 +21,61 @@ import java.util.UUID;
 
 public class PlanetEntity extends Entity {
     private static final TrackedData<Integer> PLANET_ID = DataTracker.registerData(PlanetEntity.class, TrackedDataHandlerRegistry.INTEGER);
+    private static final TrackedData<Float> BODY_MASS = DataTracker.registerData(PlanetEntity.class, TrackedDataHandlerRegistry.FLOAT);
+    private static final TrackedData<Float> GROWTH = DataTracker.registerData(PlanetEntity.class, TrackedDataHandlerRegistry.FLOAT);
     private final Map<UUID, Integer> hitCooldown = new HashMap<>();
-    private final Map<Integer, Integer> planetHitCooldown = new HashMap<>();
     private float spin;
 
     public PlanetEntity(EntityType<? extends PlanetEntity> type, World world) {
         super(type, world);
         setNoGravity(true);
     }
-    @Override protected void initDataTracker() { dataTracker.startTracking(PLANET_ID, 0); }
-    public void setPlanetType(PlanetType type) { dataTracker.set(PLANET_ID, type.ordinal()); }
+    @Override protected void initDataTracker() {
+        dataTracker.startTracking(PLANET_ID, 0);
+        dataTracker.startTracking(BODY_MASS, 1.0f);
+        dataTracker.startTracking(GROWTH, 1.0f);
+    }
+    public void setPlanetType(PlanetType type) {
+        dataTracker.set(PLANET_ID, type.ordinal());
+        dataTracker.set(BODY_MASS, type.mass);
+        dataTracker.set(GROWTH, 1.0f);
+    }
     public PlanetType getPlanetType() { return PlanetType.byId(dataTracker.get(PLANET_ID)); }
+    public float getMass() { return dataTracker.get(BODY_MASS); }
+    public float getVisualScale() { return getPlanetType().scale * dataTracker.get(GROWTH); }
     public float getSpin(float tickDelta) { return (spin + tickDelta) * 1.6f; }
+
+    private void absorb(PlanetEntity smaller) {
+        double thisRadius = 0.91 * getVisualScale();
+        double absorbedRadius = 0.91 * smaller.getVisualScale();
+        double combinedRadius = Math.cbrt(thisRadius * thisRadius * thisRadius + absorbedRadius * absorbedRadius * absorbedRadius);
+        float growth = (float) (combinedRadius / (0.91 * getPlanetType().scale));
+        dataTracker.set(GROWTH, Math.min(4.0f, growth));
+        dataTracker.set(BODY_MASS, getMass() + smaller.getMass());
+
+        double x = (getX() + smaller.getX()) * 0.5;
+        double y = (getY() + smaller.getY()) * 0.5;
+        double z = (getZ() + smaller.getZ()) * 0.5;
+        if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
+            serverWorld.spawnParticles(ParticleTypes.EXPLOSION, x, y, z, 2, 0.25, 0.25, 0.25, 0.02);
+            serverWorld.spawnParticles(ParticleTypes.END_ROD, x, y, z, 56, 0.8, 0.8, 0.8, 0.13);
+            serverWorld.spawnParticles(ParticleTypes.FIREWORK, x, y, z, 40, 0.7, 0.7, 0.7, 0.12);
+            serverWorld.spawnParticles(ParticleTypes.CLOUD, x, y, z, 28, 0.65, 0.65, 0.65, 0.08);
+            if (getPlanetType() == PlanetType.SOL || getPlanetType() == PlanetType.JUPITER)
+                serverWorld.spawnParticles(ParticleTypes.FLAME, x, y, z, 36, 0.65, 0.65, 0.65, 0.11);
+        }
+        for (PlayerEntity player : getWorld().getPlayers()) {
+            if (player.squaredDistanceTo(x, y, z) < 144) {
+                Vec3d shock = player.getPos().subtract(x, y, z).normalize();
+                if (shock.lengthSquared() > 0.01) {
+                    player.addVelocity(shock.x * 0.55, Math.max(0.18, shock.y * 0.55), shock.z * 0.55);
+                    player.velocityModified = true;
+                }
+                player.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE, 1.25f, 0.75f);
+            }
+        }
+        smaller.discard();
+    }
 
     @Override public void tick() {
         super.tick();
@@ -41,8 +84,15 @@ public class PlanetEntity extends Entity {
             double angle = random.nextDouble() * Math.PI * 2;
             double y = (random.nextDouble() - 0.5) * 2.5;
             double ring = Math.sqrt(Math.max(0, 1 - y * y / 1.6));
-            getWorld().addParticle(getPlanetType().particle, getX() + Math.cos(angle) * ring * 1.65, getY() + y * 1.1,
-                    getZ() + Math.sin(angle) * ring * 1.65, 0, 0.015, 0);
+            double radius = getVisualScale() * 1.12;
+            getWorld().addParticle(getPlanetType().particle, getX() + Math.cos(angle) * ring * radius, getY() + y * radius * 0.7,
+                    getZ() + Math.sin(angle) * ring * radius, 0, 0.015, 0);
+        }
+        if (getWorld().isClient && getPlanetType() == PlanetType.SOL && age % 2 == 0) {
+            double angle = random.nextDouble() * Math.PI * 2;
+            double radius = getVisualScale() * 1.15;
+            getWorld().addParticle(ParticleTypes.FLAME, getX() + Math.cos(angle) * radius, getY(), getZ() + Math.sin(angle) * radius,
+                    Math.cos(angle) * 0.025, 0.02, Math.sin(angle) * 0.025);
         }
         if (getWorld().isClient && getPlanetType() == PlanetType.METEORO) {
             getWorld().addParticle(ParticleTypes.FLAME, getX(), getY(), getZ(), 0, 0.02, 0);
@@ -60,8 +110,6 @@ public class PlanetEntity extends Entity {
             }
             hitCooldown.replaceAll((uuid, ticks) -> ticks - 1);
             hitCooldown.values().removeIf(ticks -> ticks <= 0);
-            planetHitCooldown.replaceAll((id, ticks) -> ticks - 1);
-            planetHitCooldown.values().removeIf(ticks -> ticks <= 0);
             collideWithPlanets();
             Box touch = getBoundingBox().expand(0.18);
             for (PlayerEntity player : getWorld().getEntitiesByClass(PlayerEntity.class, touch, p -> p.isAlive() && !hitCooldown.containsKey(p.getUuid()))) {
@@ -89,7 +137,7 @@ public class PlanetEntity extends Entity {
                 body -> body != this && body.getPlanetType() != PlanetType.METEORO)) {
             Vec3d delta = other.getPos().subtract(getPos());
             double distanceSquared = Math.max(16.0, delta.lengthSquared());
-            double strength = 0.0015 * other.getPlanetType().mass / distanceSquared;
+            double strength = 0.0015 * other.getMass() / distanceSquared;
             acceleration = acceleration.add(delta.normalize().multiply(strength));
         }
         if (acceleration.lengthSquared() > 0.0004) acceleration = acceleration.normalize().multiply(0.02);
@@ -102,83 +150,42 @@ public class PlanetEntity extends Entity {
     }
 
     private void collideWithPlanets() {
-        Box nearby = getBoundingBox().expand(5.0);
+        Box nearby = getBoundingBox().expand(16.0);
         for (PlanetEntity other : getWorld().getEntitiesByClass(PlanetEntity.class, nearby,
                 planet -> planet != this && getId() < planet.getId())) {
-            double thisRadius = 0.91 * getPlanetType().scale;
-            double otherRadius = 0.91 * other.getPlanetType().scale;
+            double thisRadius = 0.91 * getVisualScale();
+            double otherRadius = 0.91 * other.getVisualScale();
             Vec3d between = other.getPos().subtract(getPos());
             double distance = between.length();
             double contactDistance = thisRadius + otherRadius;
             if (distance >= contactDistance) continue;
 
-            if (getPlanetType() == PlanetType.METEORO || other.getPlanetType() == PlanetType.METEORO) {
-                double x = (getX() + other.getX()) * 0.5;
-                double y = (getY() + other.getY()) * 0.5;
-                double z = (getZ() + other.getZ()) * 0.5;
-                if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
-                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, x, y, z, 4, 0.4, 0.4, 0.4, 0.03);
-                    serverWorld.spawnParticles(ParticleTypes.FLAME, x, y, z, 52, 0.8, 0.8, 0.8, 0.16);
-                    serverWorld.spawnParticles(ParticleTypes.LAVA, x, y, z, 18, 0.5, 0.5, 0.5, 0.08);
-                    serverWorld.spawnParticles(ParticleTypes.SMOKE, x, y, z, 38, 0.7, 0.7, 0.7, 0.10);
-                }
-                if (getPlanetType() == PlanetType.METEORO) discard();
-                if (other.getPlanetType() == PlanetType.METEORO) other.discard();
-                continue;
-            }
-
-            Vec3d direction = between;
-            if (distance < 1.0E-4) {
-                double angle = (getId() * 31L + other.getId() * 17L) * 0.37;
-                direction = new Vec3d(Math.cos(angle), 0.15, Math.sin(angle));
-            }
-            direction = direction.normalize();
-
-            // Resolve the overlap according to each body's mass, then apply a physical bounce.
-            double overlap = contactDistance - distance + 0.035;
-            double invThis = 1.0 / Math.max(0.1, getPlanetType().mass);
-            double invOther = 1.0 / Math.max(0.1, other.getPlanetType().mass);
-            double invTotal = invThis + invOther;
-            setPosition(getPos().subtract(direction.multiply(overlap * invThis / invTotal)));
-            other.setPosition(other.getPos().add(direction.multiply(overlap * invOther / invTotal)));
-
-            Vec3d relativeVelocity = other.getVelocity().subtract(getVelocity());
-            double closingSpeed = relativeVelocity.dotProduct(direction);
-            if (closingSpeed < 0) {
-                double impulse = -(1.0 + 0.78) * closingSpeed / invTotal;
-                setVelocity(getVelocity().subtract(direction.multiply(impulse * invThis)));
-                other.setVelocity(other.getVelocity().add(direction.multiply(impulse * invOther)));
-            }
-
-            if (!planetHitCooldown.containsKey(other.getId())) {
-                double impactX = (getX() + other.getX()) * 0.5;
-                double impactY = (getY() + other.getY()) * 0.5;
-                double impactZ = (getZ() + other.getZ()) * 0.5;
-                if (getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
-                    serverWorld.spawnParticles(ParticleTypes.EXPLOSION, impactX, impactY, impactZ, 3, 0.25, 0.25, 0.25, 0.03);
-                    serverWorld.spawnParticles(ParticleTypes.FIREWORK, impactX, impactY, impactZ, 42, 0.8, 0.8, 0.8, 0.12);
-                    serverWorld.spawnParticles(ParticleTypes.END_ROD, impactX, impactY, impactZ, 28, 0.75, 0.75, 0.75, 0.10);
-                    serverWorld.spawnParticles(ParticleTypes.CLOUD, impactX, impactY, impactZ, 24, 0.55, 0.55, 0.55, 0.06);
-                }
-                for (PlayerEntity player : getWorld().getPlayers()) {
-                    if (player.squaredDistanceTo(impactX, impactY, impactZ) < 144) {
-                        Vec3d shock = player.getPos().subtract(impactX, impactY, impactZ).normalize();
-                        if (shock.lengthSquared() > 0.01) {
-                            player.addVelocity(shock.x * 0.45, Math.max(0.15, shock.y * 0.45), shock.z * 0.45);
-                            player.velocityModified = true;
-                        }
-                        player.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE, 1.25f, 0.72f + random.nextFloat() * 0.18f);
-                    }
-                }
-                planetHitCooldown.put(other.getId(), 24);
-                other.planetHitCooldown.put(getId(), 24);
+            if (getPlanetType() == PlanetType.METEORO) {
+                other.absorb(this);
+            } else if (other.getPlanetType() == PlanetType.METEORO) {
+                absorb(other);
+            } else {
+                double thisDominance = getMass() * Math.pow(getVisualScale(), 3);
+                double otherDominance = other.getMass() * Math.pow(other.getVisualScale(), 3);
+                if (thisDominance >= otherDominance) absorb(other);
+                else other.absorb(this);
             }
         }
     }
 
     @Override public boolean isPushable() { return true; }
     @Override public boolean isCollidable() { return true; }
-    @Override protected void readCustomDataFromNbt(NbtCompound nbt) { dataTracker.set(PLANET_ID, nbt.getInt("PlanetType")); }
-    @Override protected void writeCustomDataToNbt(NbtCompound nbt) { nbt.putInt("PlanetType", dataTracker.get(PLANET_ID)); }
+    @Override protected void readCustomDataFromNbt(NbtCompound nbt) {
+        int id = nbt.getInt("PlanetType");
+        PlanetType type = PlanetType.byId(id);
+        dataTracker.set(PLANET_ID, id);
+        dataTracker.set(BODY_MASS, nbt.contains("BodyMass") ? Math.max(type.mass, nbt.getFloat("BodyMass")) : type.mass);
+        dataTracker.set(GROWTH, nbt.contains("Growth") ? Math.max(1.0f, nbt.getFloat("Growth")) : 1.0f);
+    }
+    @Override protected void writeCustomDataToNbt(NbtCompound nbt) {
+        nbt.putInt("PlanetType", dataTracker.get(PLANET_ID));
+        nbt.putFloat("BodyMass", dataTracker.get(BODY_MASS));
+        nbt.putFloat("Growth", dataTracker.get(GROWTH));
+    }
     @Override public Packet<ClientPlayPacketListener> createSpawnPacket() { return new net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket(this); }
 }

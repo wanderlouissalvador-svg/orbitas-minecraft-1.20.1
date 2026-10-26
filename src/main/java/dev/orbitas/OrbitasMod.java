@@ -23,7 +23,7 @@ public class OrbitasMod implements ModInitializer {
                     .dimensions(EntityDimensions.fixed(2.8f, 2.8f)).trackRangeBlocks(96).trackedUpdateRate(2).build());
 
     @Override public void onInitialize() {
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(CommandManager.literal("planeta")
                 .then(CommandManager.argument("nombre", StringArgumentType.word()).executes(context -> {
                     PlanetType type = PlanetType.byName(StringArgumentType.getString(context, "nombre"));
@@ -70,7 +70,7 @@ public class OrbitasMod implements ModInitializer {
                     world.spawnEntity(planet);
                     context.getSource().sendFeedback(() -> Text.literal("✦ ¡" + type.id.toUpperCase() + " ha aparecido!"), false);
                     return 1;
-                }))));
+                })));
 
         dispatcher.register(CommandManager.literal("meteoro").executes(context -> {
             var source = context.getSource();
@@ -85,6 +85,7 @@ public class OrbitasMod implements ModInitializer {
             source.sendFeedback(() -> Text.literal("☄ ¡Meteoro en camino!"), false);
             return 1;
         }));
+        });
     }
 
     private static Vec3d lookVector(float pitchDegrees, float yawDegrees) {
